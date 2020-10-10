@@ -9,11 +9,13 @@
 
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/fs.h>
 
 #include <linux/gfp.h>
 
 #include <linux/slab.h>
 #include <linux/gpio.h>
+#include <linux/poll.h>
 
 #include <linux/sched.h>
 #include <linux/delay.h>
@@ -66,21 +68,49 @@ module_param(ext, int, 0644);
 
 static ssize_t foo_read(struct file *flip, char __user *data, size_t size, loff_t *offset)
 {
-	return 0;
+	char buf[128];
+
+	// fill data here
+
+	return copy_to_user(data, buf, size);
 }
 
 static ssize_t foo_write(struct file *flip, const char __user *data, size_t size, loff_t *offset)
 {
-	return 0;
+	char buf[128];
+	return copy_from_user(buf, data, size);
 }
 
 static unsigned int foo_poll(struct file *flip, struct poll_table_struct *pts)
 {
-	return 0;
+	unsigned int mask = 0;
+
+	// check ready or not here
+
+	mask = POLLIN | POLLRDNORM; // ready
+
+	return mask;
 }
 
 static long foo_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 {
+	void *data = (void *)arg;
+
+	switch (cmd)
+	{
+	case 1:
+		/* code */
+		break;
+
+	case 2:
+		/* code */
+		break;
+
+	default:
+		return -ENOIOCTLCMD;
+		break;
+	}
+
 	return 0;
 }
 
@@ -244,22 +274,6 @@ static void gen_misc_dev(struct foo_data *fdp)
 	fdp->miscdev_off = misc_register(&foo_dev);
 }
 
-static void foo_kthread_create(struct foo_data *fdp)
-{
-	fdp->foo_kthread = kthread_run(foo_kthread_func, fdp, "foo_kthread");
-	if (IS_ERR(fdp->foo_kthread))
-		fdp->foo_kthread = NULL;
-}
-
-static void foo_timer_create(struct foo_data *fdp)
-{
-	// DEFINE_TIMER(timer, foo_timeout_func, jiffies + msecs_to_jiffies(1), fdp);
-	fdp->timer.data = (unsigned long)fdp;
-	fdp->timer.function = foo_timeout_func;
-	fdp->timer.expires = jiffies + msecs_to_jiffies(1);
-	add_timer(&fdp->timer);
-}
-
 static void modify_reg_val(struct foo_data *fdp)
 {
 	unsigned int val;
@@ -297,6 +311,22 @@ static int foo_kthread_func(void *data)
 	}
 
 	return 0;
+}
+
+static void foo_kthread_create(struct foo_data *fdp)
+{
+	fdp->foo_kthread = kthread_run(foo_kthread_func, fdp, "foo_kthread");
+	if (IS_ERR(fdp->foo_kthread))
+		fdp->foo_kthread = NULL;
+}
+
+static void foo_timer_create(struct foo_data *fdp)
+{
+	// DEFINE_TIMER(timer, foo_timeout_func, jiffies + msecs_to_jiffies(1), fdp);
+	fdp->timer.data = (unsigned long)fdp;
+	fdp->timer.function = foo_timeout_func;
+	fdp->timer.expires = jiffies + msecs_to_jiffies(1);
+	add_timer(&fdp->timer);
 }
 
 static void foo_debug_info(struct platform_device *dev)

@@ -50,10 +50,14 @@ struct foo_data
 	struct gpio_desc *rst_gpio;
 	struct proc_dir_entry *proc_node;
 	struct platform_device *pdev;
+	struct task_struct *foo_kthread;
+	struct timer_list timer;
 	char devname[128];
 	int sysfs_off;
-	int misc_off;
+	int miscdev_off;
 	unsigned int irq;
+	int gpio;
+	spinlock_t spinlock;
 	void *iomap;
 };
 
@@ -157,23 +161,31 @@ static void request_gpio_without_dts(struct foo_data *fdp)
 	int ret = -1;
 
 	if (ext)
-		gpio = ext; // using extern gpio
+		fdp->gpio = ext; // using extern gpio
+	else
+		fdp->gpio = gpio;
 
-	if (gpio_is_valid(gpio))
-		ret = devm_gpio_request_one(&fdp->pdev->dev, gpio, GPIOF_OUT_INIT_HIGH, "foo gpio");
+	if (gpio_is_valid(fdp->gpio))
+		ret = devm_gpio_request_one(&fdp->pdev->dev, fdp->gpio, GPIOF_OUT_INIT_HIGH, "foo gpio");
 
 	if (!ret)
 	{
-		gpio_direction_output(gpio, 1);
+		gpio_direction_output(fdp->gpio, 1);
 	}
 }
 
 static irqreturn_t foo_gpio_trigger(int irq, void *data)
 {
 	struct foo_data *fdp = (struct foo_data *)data;
-
+	unsigned long flags;
 	if (fdp->irq != irq)
 		return IRQ_NONE;
+
+	spin_lock_irqsave(&fdp->spinlock, flags);
+
+	/* something to do here... */
+
+	spin_unlock_irqrestore(&fdp->spinlock, flags);
 
 	// irq comfirm to handle
 	return IRQ_HANDLED;
@@ -198,9 +210,10 @@ static int set_gpio_action(struct foo_data *fdp)
 		if (ret)
 		{
 			dev_err(&fdp->pdev->dev, "%s request interrupt failed with %d\n", __func__, ret);
+			return ret;
 		}
-
-		disable_irq(fdp->irq); // enable it when device open
+		else
+			disable_irq(fdp->irq); // enable it when device open
 	}
 
 	if (fdp->rst_gpio)
@@ -228,7 +241,23 @@ static void gen_sysfs_node(struct foo_data *fdp)
 static void gen_misc_dev(struct foo_data *fdp)
 {
 	foo_dev.name = fdp->devname;
-	fdp->misc_off = misc_register(&foo_dev);
+	fdp->miscdev_off = misc_register(&foo_dev);
+}
+
+static void foo_kthread_create(struct foo_data *fdp)
+{
+	fdp->foo_kthread = kthread_run(foo_kthread_func, fdp, "foo_kthread");
+	if (IS_ERR(fdp->foo_kthread))
+		fdp->foo_kthread = NULL;
+}
+
+static void foo_timer_create(struct foo_data *fdp)
+{
+	// DEFINE_TIMER(timer, foo_timeout_func, jiffies + msecs_to_jiffies(1), fdp);
+	fdp->timer.data = (unsigned long)fdp;
+	fdp->timer.function = foo_timeout_func;
+	fdp->timer.expires = jiffies + msecs_to_jiffies(1);
+	add_timer(&fdp->timer);
 }
 
 static void modify_reg_val(struct foo_data *fdp)
@@ -247,6 +276,27 @@ static void modify_reg_val(struct foo_data *fdp)
 	// val = readl(fdp->iomap + 0x04);
 	// val |= 0x10;
 	// writel(val);
+}
+
+static void foo_timeout_func(unsigned long data)
+{
+	struct foo_data *fdp = (struct foo_data *)data;
+
+	// do something here after timeout
+}
+
+static int foo_kthread_func(void *data)
+{
+	struct foo_data *fdp = (struct foo_data *)data;
+
+	while (!kthread_should_stop())
+	{
+		/* do something here */
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(msecs_to_jiffies(1000));
+	}
+
+	return 0;
 }
 
 static void foo_debug_info(struct platform_device *dev)
@@ -272,10 +322,14 @@ static int foo_probe(struct platform_device *dev)
 
 	parse_of_node(dev->dev.of_node, fdp);
 
+	spin_lock_init(&fdp->spinlock);
+
 	if (set_gpio_action(fdp) < 0)
 		return -EIO;
 
 	modify_reg_val(fdp);
+	foo_kthread_create(fdp);
+	foo_timer_create(fdp);
 
 	gen_proc_node(fdp, 0640);
 	gen_sysfs_node(fdp);
@@ -290,7 +344,7 @@ static int foo_remove(struct platform_device *dev)
 {
 	struct foo_data *fdp = platform_get_drvdata(dev);
 
-	if (!fdp->misc_off)
+	if (!fdp->miscdev_off)
 		misc_deregister(&foo_dev);
 
 	if (!fdp->sysfs_off)
@@ -307,6 +361,11 @@ static int foo_remove(struct platform_device *dev)
 
 	if (fdp->irq_gpio)
 		devm_gpiod_put(&dev->dev, fdp->irq_gpio);
+
+	if (fdp->foo_kthread)
+		kthread_stop(fdp->foo_kthread);
+
+	try_to_del_timer_sync(&fdp->timer);
 
 	devm_kfree(&dev->dev, fdp);
 
@@ -344,6 +403,8 @@ MODULE_DESCRIPTION("the nothing todo driver");
             compatible = "foo,foo";
             reg = <0xf0000000 0x1000>;
             devname = "foo";
+            rst-gpio = <&gpio_porta 1 GPIO_ACTIVE_HIGH>;
+            irq-gpio = <&gpio_porta 2 GPIO_ACTIVE_HIGH>;
         };
 */
 

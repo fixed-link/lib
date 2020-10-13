@@ -5,8 +5,13 @@
 set nu
 set ai
 set ts=4
+set title
+set ruler
 syntax on
+filetype on
+set hlsearch
 set mouse-=a
+set noexpandtab
 ```
 
 ## bash

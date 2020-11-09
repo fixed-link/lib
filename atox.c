@@ -122,7 +122,7 @@ int str_to_int(const char *s)
 		break;
 
 	default:
-		otoi(s + 1);
+		return otoi(s + 1);
 		break;
 	}
 }

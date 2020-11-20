@@ -170,7 +170,7 @@ static void spi_transfer_rise_edge(struct spi_data *data)
 
 		for (i = 7; i >= 0; i--)
 		{
-			val = (data >> i) & 0x1;
+			val = (tmp >> i) & 0x1;
 			data_set(val);
 			TIMING;
 			clk_rising();

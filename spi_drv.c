@@ -10,7 +10,11 @@
 #define HIGH 1
 #define LOW 0
 
-#define TIMING udelay(1)
+// #define TIMING udelay(1)
+#define TIMING \
+	do         \
+	{          \
+	} while (0) // do as fast as possible
 
 typedef struct
 {
@@ -158,28 +162,31 @@ static void spi_transfer_rise_edge(struct spi_data *data)
 	unsigned char *tx_buf = data->tx_buf;
 	unsigned char *rx_buf = data->rx_buf;
 	ssize_t n = data->n;
-	unsigned char tmp;
+	unsigned char tx_tmp, rx_tmp = 0;
 
 	// 0&3
 	// tx
 	while (n > 0)
 	{
-		tmp = *tx_buf;
+		tx_tmp = *tx_buf;
 		tx_buf++;
 		n--;
 
 		for (i = 7; i >= 0; i--)
 		{
-			val = (tmp >> i) & 0x1;
+			val = (tx_tmp >> i) & 0x1;
 			data_set(val);
 			TIMING;
 			clk_rising();
 			TIMING;
+			rx_tmp |= (data_get() << i);
 			clk_falling();
 		}
-	}
 
-	// TO DO: rx
+		*rx_buf = rx_tmp;
+		rx_tmp = 0;
+		rx_buf++;
+	}
 }
 
 static void spi_transfer_fall_edge(struct spi_data *data)
@@ -189,28 +196,31 @@ static void spi_transfer_fall_edge(struct spi_data *data)
 	unsigned char *tx_buf = data->tx_buf;
 	unsigned char *rx_buf = data->rx_buf;
 	ssize_t n = data->n;
-	unsigned char tmp;
+	unsigned char tx_tmp, rx_tmp = 0;
 
 	// 1&2
 	// tx
 	while (n > 0)
 	{
-		tmp = *tx_buf;
+		tx_tmp = *tx_buf;
 		tx_buf++;
 		n--;
 
 		for (i = 7; i >= 0; i--)
 		{
-			val = (tmp >> i) & 0x1;
+			val = (tx_tmp >> i) & 0x1;
 			data_set(val);
 			TIMING;
 			clk_falling();
 			TIMING;
+			rx_tmp |= (data_get() << i);
 			clk_rising();
 		}
-	}
 
-	// TO DO: rx
+		*rx_buf = rx_tmp;
+		rx_tmp = 0;
+		rx_buf++;
+	}
 }
 
 void spi_data_swap(struct spi_data *data)

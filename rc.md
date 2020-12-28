@@ -30,3 +30,10 @@ wget https://dl.google.com/android/repository/platform-tools-latest-linux.zip
 dpkg-reconfigure dash
 update-alternatives --config editor
 ```
+
+## dev
+```
+sudo apt-get install gawk wget git-core diffstat unzip texinfo gcc-multilib build-essential chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev pylint3 xterm python3-subunit mesa-common-dev
+sudo apt-get install make python3-pip
+sudo pip3 install sphinx sphinx_rtd_theme pyyaml
+```

@@ -16,6 +16,20 @@
 	{          \
 	} while (0) // do as fast as possible
 
+#define DATA_ENTRY_MODE(mode) \
+	if (mode)                 \
+	{                         \
+		x = 0;                \
+		y = 8;                \
+		z = 1;                \
+	}                         \
+	else                      \
+	{                         \
+		x = 7;                \
+		y = -1;               \
+		z = -1;               \
+	}
+
 typedef struct
 {
 	int sclk;
@@ -163,6 +177,10 @@ static void spi_transfer_rise_edge(struct spi_data *data)
 	unsigned char *rx_buf = data->rx_buf;
 	ssize_t n = data->n;
 	unsigned char tx_tmp, rx_tmp = 0;
+	/* data begin, data end, data step */
+	int x, y, z;
+
+	DATA_ENTRY_MODE(data->mode & SPI_LSB_FIRST);
 
 	// 0&3
 	// tx
@@ -172,7 +190,8 @@ static void spi_transfer_rise_edge(struct spi_data *data)
 		tx_buf++;
 		n--;
 
-		for (i = 7; i >= 0; i--)
+		// for (i = 7; i >= 0; i--)
+		for (i = x; i != y; i += z)
 		{
 			val = (tx_tmp >> i) & 0x1;
 			data_set(val);
@@ -197,6 +216,10 @@ static void spi_transfer_fall_edge(struct spi_data *data)
 	unsigned char *rx_buf = data->rx_buf;
 	ssize_t n = data->n;
 	unsigned char tx_tmp, rx_tmp = 0;
+	/* data begin, data end, data step */
+	int x, y, z;
+
+	DATA_ENTRY_MODE(data->mode & SPI_LSB_FIRST);
 
 	// 1&2
 	// tx
@@ -206,7 +229,8 @@ static void spi_transfer_fall_edge(struct spi_data *data)
 		tx_buf++;
 		n--;
 
-		for (i = 7; i >= 0; i--)
+		// for (i = 7; i >= 0; i--)
+		for (i = x; i != y; i += z)
 		{
 			val = (tx_tmp >> i) & 0x1;
 			data_set(val);
@@ -227,7 +251,7 @@ void spi_data_swap(struct spi_data *data)
 {
 	cs_low();
 
-	switch (data->mode)
+	switch (data->mode & SPI_MODE_3)
 	{
 	case SPI_MODE_0:
 		gpio_set_value(pin.sclk, LOW);
@@ -254,7 +278,7 @@ void spi_data_swap(struct spi_data *data)
 		break;
 
 	default:
-		pr_err("Not support spi mode %d\n", mode);
+		pr_err("Not support spi mode %x\n", mode);
 		break;
 	}
 

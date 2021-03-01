@@ -33,6 +33,7 @@
 #include <linux/kthread.h>
 #include <linux/jiffies.h>
 
+#include <linux/firmware.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/miscdevice.h>
@@ -45,6 +46,7 @@
 // #include <linux/spi/spi.h>
 
 #define DEFAULT_DEVNAME "foo"
+#define DEVICE_FIRMWARE_BIN "update.bin"
 
 struct foo_data
 {
@@ -61,6 +63,8 @@ struct foo_data
 	int gpio;
 	spinlock_t spinlock;
 	void *iomap;
+	unsigned char *fw_data;
+	int fw_size;
 };
 
 static int ext = 0; // the extern argument for this driver
@@ -338,6 +342,24 @@ static void foo_debug_info(struct platform_device *dev)
 	pr_debug("reg: %x, %x\n", dev->resource->start, dev->resource->end);
 }
 
+static int get_firmware(struct foo_data *fdp)
+{
+	const struct firmware *fw;
+
+	fdp->fw_data = (unsigned char *)devm_kzalloc(&fdp->pdev->dev, fw->size, GFP_KERNEL);
+	if (!fdp->fw_data)
+		return -ENOMEM;
+
+	if (request_firmware(&fw, DEVICE_FIRMWARE_BIN, &fdp->pdev->dev))
+		return -EINVAL;
+
+	fdp->fw_size = fw->size;
+	memcpy(fdp->fw_data, fw->data, fw->size);
+
+	release_firmware(fw);
+	return 0;
+}
+
 static int foo_probe(struct platform_device *dev)
 {
 	struct foo_data *fdp;
@@ -357,6 +379,8 @@ static int foo_probe(struct platform_device *dev)
 	if (set_gpio_action(fdp) < 0)
 		return -EIO;
 
+	get_firmware(fdp);
+
 	modify_reg_val(fdp);
 	foo_kthread_create(fdp);
 	foo_timer_create(fdp);
@@ -373,6 +397,9 @@ static int foo_probe(struct platform_device *dev)
 static int foo_remove(struct platform_device *dev)
 {
 	struct foo_data *fdp = platform_get_drvdata(dev);
+
+	if (fdp->fw_data)
+		devm_kfree(&dev->dev, fdp->fw_data);
 
 	if (!fdp->miscdev_off)
 		misc_deregister(&foo_dev);

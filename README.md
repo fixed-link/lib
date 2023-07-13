@@ -1,2 +1,1 @@
-# clib
-Chowe's Library
+Library for Link
